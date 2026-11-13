@@ -1,0 +1,23 @@
+# Local build and release output
+/build/
+/dist/
+*.saver/
+*.zip
+
+# Swift / Xcode
+.swiftpm/
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Python tests
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

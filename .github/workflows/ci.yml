@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-checks:
+    name: Offline source and metadata checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run source-contract tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Check plist syntax
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          plistlib.loads(Path("Info.plist").read_bytes())
+          print("Info.plist is valid")
+          PY
+      - name: Parse Swift source files
+        run: |
+          for source in Sources/*.swift; do
+            swiftc -frontend -parse "$source"
+          done
+
+  macos-build:
+    name: Build native macOS screen saver
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: swift --version
+      - name: Run offline source-contract tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Build screen saver
+        run: ./build.sh
+      - name: Verify built bundle
+        run: |
+          test -f build/FlightSaver.saver/Contents/MacOS/FlightSaver
+          plutil -lint build/FlightSaver.saver/Contents/Info.plist
+          codesign --verify --deep --strict build/FlightSaver.saver

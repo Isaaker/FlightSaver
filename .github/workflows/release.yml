@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  release:
+    name: Build and publish macOS bundle
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify tag and version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test "v$VERSION" = "$RELEASE_TAG"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Build screen saver
+        run: ./build.sh
+      - name: Package bundle and project notices
+        run: |
+          PACKAGE_DIR="dist/FlightSaver-${{ steps.version.outputs.version }}"
+          mkdir -p "$PACKAGE_DIR"
+          cp -R build/FlightSaver.saver "$PACKAGE_DIR/"
+          cp README.md README.es.md LICENSE NOTICE.md "$PACKAGE_DIR/"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$PACKAGE_DIR" \
+            "dist/FlightSaver-${{ steps.version.outputs.version }}-macOS-$(uname -m).zip"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            dist/FlightSaver-${{ steps.version.outputs.version }}-macOS-$(uname -m).zip \
+            --title "FlightSaver ${{ steps.version.outputs.version }}" \
+            --generate-notes
