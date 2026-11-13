@@ -9,3 +9,7 @@
 FlightSaver uses external services and datasets for live traffic, maps and optional aircraft photographs. Their providers retain ownership of their respective services, data, names, marks and imagery. See [NOTICE.md](NOTICE.md) and [PRIVACY.md](PRIVACY.md).
 
 Contributions from other people should be acknowledged here when they are included in a published release.
+
+## Project maintenance
+
+- **Ramshackle Code Organization** — project maintenance and licensing contact. See [`LICENSOR.md`](LICENSOR.md).

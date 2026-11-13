@@ -4,6 +4,7 @@ All notable user-facing changes to FlightSaver are documented here.
 
 ## 1.1.1 — 2026-11-13
 
+- Replaced the previous MIT notice with CC BY-NC-ND 4.0 and aligned project, reuse and contribution documentation with the new permissions.
 - Added a repository contact URL to the shared application User-Agent so Planespotters can identify and contact the maintainer.
 - Centralised the User-Agent used by ADS-B, map and photo clients.
 - Kept registration as the primary Planespotters lookup and ICAO hex as fallback, including after HTTP 403 and other non-rate-limit registration failures.

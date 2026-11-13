@@ -54,10 +54,23 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn(' < VERSION', build)
         self.assertIn('CFBundleShortVersionString', build)
 
+    def test_cc_by_nc_nd_policy_is_consistent_across_documents(self):
+        license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_es = (ROOT / "README.es.md").read_text(encoding="utf-8")
+        contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International", license_text)
+        self.assertIn("CC BY-NC-ND 4.0", readme)
+        self.assertIn("CC BY-NC-ND 4.0", readme_es)
+        self.assertIn("does not permit sharing adapted material", contributing)
+        for document in (readme, readme_es, contributing):
+            self.assertNotIn("MIT License", document)
+
     def test_documentation_and_repository_policies_exist(self):
         required = [
-            "README.md", "README.es.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md",
-            "CHANGELOG.md", "AUTHORS.md", "NOTICE.md", "PRIVACY.md", "SUPPORT.md",
+            "README.md", "README.es.md", "LICENSE", "LICENSING.md", "LICENSOR.md",
+            "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md", "AUTHORS.md",
+            "NOTICE.md", "PRIVACY.md", "SUPPORT.md",
             "CODE_OF_CONDUCT.md", ".github/workflows/ci.yml", ".github/workflows/release.yml",
         ]
         for relative in required:

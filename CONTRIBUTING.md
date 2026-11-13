@@ -1,6 +1,14 @@
 # Contributing to FlightSaver
 
-Thanks for considering a contribution. FlightSaver is a small native macOS project; the goal is a dependable, transparent aircraft-traffic screen saver, not an aviation operational tool.
+Thanks for your interest in FlightSaver. The project welcomes bug reports, reproducible diagnostics, accessibility feedback and feature suggestions. The goal is a dependable, transparent aircraft-traffic screen saver, not an aviation operational tool.
+
+## Please read the licence first
+
+Unless a file says otherwise, FlightSaver's first-party source code and documentation are distributed under **CC BY-NC-ND 4.0**. This licence permits non-commercial sharing of unmodified material, and permits non-commercial creation/reproduction of adaptations, but it does not permit sharing adapted material.
+
+For that reason, **do not submit an unsolicited pull request containing modified project code or documentation**. A public pull request may make adapted material available to others. Contact the maintainers first and obtain written approval plus a separate agreement covering the proposed contribution and its distribution. See [`LICENSING.md`](LICENSING.md).
+
+You may still report bugs, ask questions and suggest changes through GitHub Issues. An issue or suggestion does not automatically grant the project rights to use or distribute third-party material you attach.
 
 ## Before opening an issue
 
@@ -9,11 +17,11 @@ Thanks for considering a contribution. FlightSaver is a small native macOS proje
 - For photo problems, include the HTTP status, the endpoint type (registration or hex) and whether the image CDN request succeeds. Do not include private API keys.
 - For map problems, include the selected map provider and whether OpenStreetMap fallback works.
 - Redact exact coordinates, local paths, personal identifiers and API keys from screenshots or logs unless you explicitly intend to share them.
-- Never attach proprietary aircraft files, copyrighted photographs, private datasets or credentials that you do not have permission to redistribute.
+- Never attach proprietary aircraft files, copyrighted photographs, private datasets or credentials that you do not have permission to share.
 
 ## Development setup
 
-Requirements:
+Requirements for local validation:
 
 - macOS 12 or newer.
 - Xcode Command Line Tools (`swiftc`, `codesign` and macOS SDK).
@@ -39,7 +47,9 @@ python3 -m unittest discover -s tests -v
 
 The CI workflow builds on macOS and runs offline checks. It intentionally does not make live requests to ADS-B, OpenStreetMap, CARTO or Planespotters services.
 
-## Code and network changes
+## Code and network design notes
+
+For maintainers and contributors with prior written approval:
 
 - Keep provider identity and User-Agent strings centralised in `Sources/NetworkIdentity.swift`.
 - Keep Planespotters registration lookup as the primary photo search and ICAO hex as the fallback.
@@ -50,19 +60,10 @@ The CI workflow builds on macOS and runs offline checks. It intentionally does n
 - Do not log API keys, full private coordinates or personal data.
 - Avoid introducing third-party dependencies when the macOS SDK or Swift standard library is sufficient.
 
-## Pull requests
-
-1. Keep each pull request focused and explain the user-visible behaviour.
-2. Add or update offline tests for parsing, request construction, fallback logic or build tooling where feasible.
-3. Update `CHANGELOG.md` for user-visible changes.
-4. Update README / privacy documentation when settings, permissions, data flows or provider behaviour change.
-5. Include test evidence (macOS version, architecture and build result). Network-dependent behaviour should include redacted status-code diagnostics, not secrets.
-6. Do not commit generated `build/` output, caches, local preferences, screenshots containing private data or API keys.
-
 ## Versioning and releases
 
-`VERSION` is the canonical release version. The build script copies it into the screen saver bundle metadata. Stable releases use tags in the form `vMAJOR.MINOR.PATCH`; the release workflow verifies the tag against `VERSION`, builds on macOS and attaches a ZIP containing the `.saver` bundle.
+`VERSION` is the canonical application version. The build script copies it into the screen saver bundle metadata. Stable releases use tags in the form `vMAJOR.MINOR.PATCH`; the release workflow verifies the tag against `VERSION`, builds on macOS and attaches a ZIP containing the `.saver` bundle.
 
-## Licence
+## Licence questions
 
-By submitting a contribution, you agree that it may be distributed under the repository's MIT License. You retain ownership of your contribution.
+The project is not offered under an OSI-approved open-source software licence. For a commercial licence, permission to distribute adapted material, or permission to contribute code, contact Ramshackle Code Organization at [ramshackle-code@piscinadeentropia.es](mailto:ramshackle-code@piscinadeentropia.es). See [`LICENSING.md`](LICENSING.md).

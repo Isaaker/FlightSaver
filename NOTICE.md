@@ -1,5 +1,7 @@
 # Third-party notices
 
+Unless a file states otherwise, FlightSaver first-party source code and documentation are licensed under CC BY-NC-ND 4.0. See [`LICENSE`](LICENSE) and [`LICENSING.md`](LICENSING.md). This project licence does not apply to the third-party services, data, maps or photographs listed below.
+
 FlightSaver is an independent community project. It is not affiliated with, endorsed by or supported by Apple, OpenStreetMap, CARTO, Planespotters.net, adsb.fi or adsb.lol.
 
 ## External services and content

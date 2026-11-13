@@ -132,9 +132,15 @@ See [PRIVACY.md](PRIVACY.md) for details. Do not share screenshots, diagnostic o
 - **The old version is still visible:** reinstall with `./build.sh --install`, then reopen Screen Saver settings. On some macOS releases it can help to restart the screen saver process or log out and back in.
 - **The screen saver behaves differently on a newer macOS release:** attach your macOS version, Mac architecture and a short reproduction to a bug report. Screen saver hosting APIs have changed across macOS versions.
 
-## Development and contribution
+## Development and feedback
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks, reporting guidelines and pull request expectations. The GitHub Actions workflow performs source-contract checks and a native macOS build. It deliberately does not call live ADS-B, map or photo APIs during CI.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local build checks and the project's feedback policy. Bug reports and feature suggestions are welcome through GitHub Issues. Code or documentation pull requests require prior written approval because the default licence does not permit public distribution of adapted material. The GitHub Actions workflow performs source-contract checks and a native macOS build; it does not call live ADS-B, map or photo APIs during CI.
+
+## Licence and reuse
+
+Unless a file says otherwise, FlightSaver's first-party source code and documentation are licensed under **Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0)**. You may share unmodified copies for non-commercial purposes with the required attribution. You may make non-commercial adaptations for yourself, but you may not share or distribute adapted versions under this licence. Commercial use or permission to distribute an adaptation requires separate permission from the rights holder.
+
+This is not an OSI-approved open-source software licence. Creative Commons advises against applying CC licences to software because they are not designed for software-specific source-code and patent provisions. Read [LICENSING.md](LICENSING.md) before reusing or contributing.
 
 ## Project documents
 
@@ -145,7 +151,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks, reporting guidelines an
 - [docs/PLANESPOTTERS.md](docs/PLANESPOTTERS.md) — photo lookup order, User-Agent and network diagnostics.
 - [SUPPORT.md](SUPPORT.md) — where to ask questions.
 - [AUTHORS.md](AUTHORS.md) and [NOTICE.md](NOTICE.md) — authorship and third-party notices.
-- [LICENSE](LICENSE) — MIT License.
+- [LICENSE](LICENSE) — CC BY-NC-ND 4.0 legal code.
+- [LICENSING.md](LICENSING.md) — permitted reuse, GitHub forks and contribution restrictions.
+- [LICENSOR.md](LICENSOR.md) — maintainer contact for additional permissions.
 
 ## Disclaimer and trademarks
 

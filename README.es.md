@@ -83,8 +83,12 @@ FlightSaver no incorpora cuentas, analítica ni telemetría. Para funcionar, env
 
 ## Desarrollo y soporte
 
-Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para compilar, ejecutar las comprobaciones y preparar contribuciones. Para incidencias, utiliza GitHub Issues. Para vulnerabilidades, sigue [SECURITY.md](SECURITY.md) y no publiques detalles sensibles en una incidencia pública.
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para compilar y ejecutar las comprobaciones. Se aceptan informes de errores y sugerencias mediante GitHub Issues. Los pull requests con cambios de código o documentación requieren autorización previa por escrito, ya que la licencia predeterminada no permite distribuir públicamente material adaptado. Para vulnerabilidades, sigue [SECURITY.md](SECURITY.md) y no publiques detalles sensibles en una incidencia pública.
 
-## Licencia y marcas
+## Licencia y reutilización
 
-FlightSaver se distribuye bajo licencia MIT; consulta [LICENSE](LICENSE). Es un proyecto independiente, sin afiliación ni respaldo de Apple, OpenStreetMap, CARTO, Planespotters.net, adsb.fi o adsb.lol. Los datos pueden estar retrasados, incompletos, no disponibles o ser inexactos.
+Salvo que un archivo indique otra cosa, el código fuente y la documentación propios de FlightSaver se distribuyen bajo **Creative Commons Atribución-NoComercial-SinDerivadas 4.0 Internacional (CC BY-NC-ND 4.0)**. Se pueden compartir copias sin modificar para fines no comerciales, con la atribución correspondiente. Se pueden crear adaptaciones no comerciales para uso propio, pero no compartirlas ni distribuirlas bajo esta licencia. El uso comercial o la distribución de adaptaciones requieren permiso separado del titular de derechos.
+
+Esta licencia no está aprobada por la OSI como licencia de software de código abierto. Creative Commons desaconseja aplicar sus licencias al software porque no están diseñadas para regular aspectos específicos del código fuente y las patentes. Lee [LICENSING.md](LICENSING.md) antes de reutilizar el proyecto o contribuir.
+
+FlightSaver es un proyecto independiente, sin afiliación ni respaldo de Apple, OpenStreetMap, CARTO, Planespotters.net, adsb.fi o adsb.lol. Los datos pueden estar retrasados, incompletos, no disponibles o ser inexactos.
