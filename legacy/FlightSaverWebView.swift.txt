@@ -1,0 +1,511 @@
+import AppKit
+import ScreenSaver
+import WebKit
+
+// MARK: - Ajustes
+
+enum Config {
+    static let module = "com.local.FlightSaver"
+    static let defaultBase = "https://www.tryflightdeck.com/map/airport/LECU"
+
+    static var store: UserDefaults {
+        (ScreenSaverDefaults(forModuleWithName: module) as UserDefaults?) ?? UserDefaults.standard
+    }
+
+    static var baseURL: String { store.string(forKey: "baseURL") ?? defaultBase }
+    // Por defecto, alrededor de LECU (Cuatro Vientos): cámbialo en "Opciones" del salvapantallas.
+    static var lat: Double { store.object(forKey: "lat") as? Double ?? 40.3706 }
+    static var lon: Double { store.object(forKey: "lon") as? Double ?? -3.7853 }
+    static var zoom: Int { store.object(forKey: "zoom") as? Int ?? 9 }
+    static var extraCSS: String { store.string(forKey: "extraCSS") ?? "" }
+    static var hideUI: Bool { store.object(forKey: "hideUIv2") as? Bool ?? false }
+    static var spoofGeo: Bool { store.object(forKey: "spoofGeo") as? Bool ?? true }
+    static var pure: Bool { store.object(forKey: "pureV1") as? Bool ?? true }
+    static var debug: Bool { store.object(forKey: "debug") as? Bool ?? true }
+
+    /// Para webs tipo tar1090 sin parámetros propios se añaden ubicación y ocultación de UI.
+    /// Para cualquier otra web (FlightDeck incluida) la URL se usa tal cual.
+    static func buildURL() -> URL {
+        let fallback = URL(string: defaultBase)!
+        let raw = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var comps = URLComponents(string: raw) else { return fallback }
+        let host = comps.host ?? ""
+        let tar1090Hosts = ["adsb.lol", "adsb.fi", "airplanes.live", "adsbexchange.com"]
+        if tar1090Hosts.contains(where: { host.hasSuffix($0) }) && (comps.queryItems ?? []).isEmpty {
+            comps.queryItems = [
+                URLQueryItem(name: "lat", value: String(lat)),
+                URLQueryItem(name: "lon", value: String(lon)),
+                URLQueryItem(name: "zoom", value: String(zoom)),
+                URLQueryItem(name: "hideSidebar", value: nil),
+                URLQueryItem(name: "hideButtons", value: nil),
+                URLQueryItem(name: "enableLabels", value: nil),
+                URLQueryItem(name: "tempTrails", value: "120"),
+                URLQueryItem(name: "mapDim", value: "0.3"),
+            ]
+        }
+        return comps.url ?? fallback
+    }
+}
+
+// MARK: - Scripts inyectados
+
+enum Scripts {
+    /// Hace que la web "crea" que estás en lat/lon (si usa navigator.geolocation para centrar el mapa).
+    static func fakeGeolocation(lat: Double, lon: Double) -> String {
+        #"""
+        (function(){
+          function pos(){return {coords:{latitude:\#(lat),longitude:\#(lon),accuracy:25,altitude:null,altitudeAccuracy:null,heading:null,speed:null},timestamp:Date.now()};}
+          var geo={
+            getCurrentPosition:function(ok){setTimeout(function(){ok(pos());},0);},
+            watchPosition:function(ok){setTimeout(function(){ok(pos());},0);return 1;},
+            clearWatch:function(){}
+          };
+          try{Object.defineProperty(navigator,'geolocation',{get:function(){return geo;},configurable:true});}catch(e){}
+          try{
+            var q=navigator.permissions&&navigator.permissions.query;
+            if(q){navigator.permissions.query=function(d){
+              if(d&&d.name==='geolocation'){return Promise.resolve({state:'granted',onchange:null});}
+              return q.call(navigator.permissions,d);
+            };}
+          }catch(e){}
+        })();
+        """#
+    }
+
+    /// Hace que la página se vea siempre como visible (evita que pause sus animaciones/datos).
+    static let alwaysVisible = #"""
+    (function(){
+      try{
+        Object.defineProperty(Document.prototype,'hidden',{get:function(){return false;},configurable:true});
+        Object.defineProperty(Document.prototype,'visibilityState',{get:function(){return 'visible';},configurable:true});
+        document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);
+      }catch(e){}
+    })();
+    """#
+
+    /// Oculta todo lo que no sea el mapa (cabecera, buscador, paneles, filtros...),
+    /// conservando las atribuciones. Heurístico: localiza el contenedor del mapa
+    /// y oculta el resto del DOM. Se reaplica cuando la web añade paneles nuevos.
+    static let hideChrome = #"""
+    (function(){
+      var ATTR=/attrib|copyright|credit/i;
+      var TXT=/©|openstreetmap|maplibre|mapbox|carto|stadia|maptiler/i;
+      function findRoot(){
+        var c=document.querySelector('.maplibregl-map,.mapboxgl-map,.leaflet-container,.ol-viewport,.gm-style');
+        if(c){return c;}
+        var best=null,area=0,cvs=document.querySelectorAll('canvas');
+        for(var i=0;i<cvs.length;i++){
+          var r=cvs[i].getBoundingClientRect(),a=r.width*r.height;
+          if(a>area){area=a;best=cvs[i];}
+        }
+        return best?(best.parentElement||best):null;
+      }
+      function isAttribution(el){
+        var cls=(typeof el.className==='string')?el.className:'';
+        if(ATTR.test(cls)){return true;}
+        var t=(el.textContent||'');
+        return t.length<220 && TXT.test(t);
+      }
+      function visit(node,root,changed){
+        var kids=node.children;
+        for(var i=0;i<kids.length;i++){
+          var c=kids[i],tag=c.tagName;
+          if(tag==='SCRIPT'||tag==='STYLE'||tag==='LINK'||tag==='NOSCRIPT'||tag==='META'){continue;}
+          if(c===root||root.contains(c)){continue;}           // dentro del mapa: se queda
+          if(c.contains(root)){visit(c,root,changed);continue;} // ancestro del mapa: bajar
+          if(tag==='CANVAS'||(c.querySelector&&c.querySelector('canvas'))){continue;} // capas de dibujo (aviones, etc.)
+          if(isAttribution(c)){continue;}
+          if(c.getAttribute('data-fs-hidden')!=='1'){
+            (window.__fsHidden=window.__fsHidden||[]).push(tag.toLowerCase()+'.'+String(c.className).slice(0,30));
+            c.style.setProperty('display','none','important');
+            c.setAttribute('data-fs-hidden','1');
+            changed.n++;
+          }
+        }
+      }
+      function run(){
+        var root=findRoot();
+        if(!root){return;}
+        var changed={n:0};
+        visit(document.body,root,changed);
+        // Seguridad: si el mapa quedó diminuto, deshacer.
+        var r=root.getBoundingClientRect();
+        if(r.width*r.height<0.3*window.innerWidth*window.innerHeight){
+          var hs=document.querySelectorAll('[data-fs-hidden="1"]');
+          for(var j=0;j<hs.length;j++){hs[j].style.removeProperty('display');hs[j].removeAttribute('data-fs-hidden');}
+        }
+      }
+      var timer=null;
+      function schedule(){clearTimeout(timer);timer=setTimeout(run,300);}
+      function start(){
+        run();
+        new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
+        setInterval(run,5000);
+      }
+      if(document.body){start();}else{document.addEventListener('DOMContentLoaded',start);}
+    })();
+    """#
+
+    /// Informa al lado nativo de errores JS y del estado de la página (canvas, WebGL, ocultados...).
+    static let diagnostics = #"""
+    (function(){
+      function post(o){try{window.webkit.messageHandlers.fsdiag.postMessage(typeof o==='string'?o:JSON.stringify(o));}catch(e){}}
+      var vs0=document.visibilityState, raf=0;
+      (function t(){raf++;requestAnimationFrame(t);})();
+      function addTests(){
+        try{
+          var b=document.createElement('div');
+          b.style.cssText='position:fixed;left:8px;bottom:8px;z-index:2147483647;display:flex;gap:6px;pointer-events:none;';
+          var d=document.createElement('div');d.style.cssText='width:60px;height:60px;background:#2979ff;';
+          var c2=document.createElement('canvas');c2.width=60;c2.height=60;
+          var x=c2.getContext('2d');x.fillStyle='#00c853';x.fillRect(0,0,60,60);
+          var cg=document.createElement('canvas');cg.width=60;cg.height=60;
+          var g=cg.getContext('webgl')||cg.getContext('experimental-webgl');
+          g.clearColor(1,0,0,1);g.clear(g.COLOR_BUFFER_BIT);
+          var px=new Uint8Array(4);g.readPixels(0,0,1,1,g.RGBA,g.UNSIGNED_BYTE,px);
+          post('prueba WebGL readPixels='+px.join(','));
+          b.appendChild(d);b.appendChild(c2);b.appendChild(cg);
+          document.documentElement.appendChild(b);
+        }catch(e){post('prueba ERR '+e);}
+      }
+      document.addEventListener('DOMContentLoaded',addTests);
+      function short(u){u=String(u);return u.length>70?u.slice(0,70)+'…':u;}
+      var fails=0;
+      function fail(m){if(fails++<8){post('FALLO '+m);}}
+      window.addEventListener('error',function(e){fail('js '+String(e.message||e));});
+      window.addEventListener('unhandledrejection',function(e){fail('promesa '+String(e.reason));});
+      try{var ce=console.error;console.error=function(){try{fail('console.error '+short(Array.prototype.join.call(arguments,' ')));}catch(x){}return ce.apply(console,arguments);};}catch(e){}
+      try{
+        var of=window.fetch;
+        if(of){window.fetch=function(){
+          var a=arguments,u=(a[0]&&a[0].url)||a[0];
+          return of.apply(this,a).then(function(r){if(!r.ok){fail('fetch '+r.status+' '+short(u));}return r;},
+                                       function(e){fail('fetch ERR '+short(u)+' '+e);throw e;});};}
+      }catch(e){}
+      try{
+        var OW=window.WebSocket;
+        if(OW){
+          var W=function(url,p){var w=p?new OW(url,p):new OW(url);
+            w.addEventListener('open',function(){post('ws abierto '+short(url));});
+            w.addEventListener('error',function(){fail('ws error '+short(url));});
+            w.addEventListener('close',function(e){fail('ws cerrado '+e.code+' '+short(url));});
+            return w;};
+          W.prototype=OW.prototype;W.CONNECTING=0;W.OPEN=1;W.CLOSING=2;W.CLOSED=3;
+          window.WebSocket=W;
+        }
+      }catch(e){}
+      function snap(tag){
+        var cv=document.querySelectorAll('canvas'),info=[],i,r,cs;
+        for(i=0;i<cv.length;i++){
+          r=cv[i].getBoundingClientRect();cs=getComputedStyle(cv[i]);
+          info.push(Math.round(r.width)+'x'+Math.round(r.height)+' d='+cs.display+' v='+cs.visibility+' o='+cs.opacity);
+        }
+        var gl=false;
+        try{var c=document.createElement('canvas');gl=!!(c.getContext('webgl2')||c.getContext('webgl'));}catch(e){}
+        post(tag+' vis0='+vs0+' vis='+document.visibilityState+' raf='+raf+' canvas='+cv.length+' ['+info.join('; ')+'] webgl='+gl+
+             ' maplibre='+!!document.querySelector('.maplibregl-map,.mapboxgl-map')+
+             ' ocultados='+document.querySelectorAll('[data-fs-hidden="1"]').length+
+             ' '+(window.__fsHidden||[]).slice(0,5).join('|'));
+      }
+      [2000,6000,15000].forEach(function(ms){setTimeout(function(){snap(ms+'ms');},ms);});
+    })();
+    """#
+
+    static let baseCSS = """
+    html,body{cursor:none !important;overflow:hidden !important;}
+    .maplibregl-ctrl-group,.mapboxgl-ctrl-group,.leaflet-control-zoom,.ol-zoom,.maplibregl-ctrl-scale,.mapboxgl-ctrl-scale{display:none !important;}
+    /* FlightDeck (estructura confirmada en su HTML): cabecera, panel lateral, tirador de redimensión y skip-link */
+    .app-shell > header.navigation,
+    .app-shell > aside.context-panel,
+    #context-panel,
+    .panel-resize,
+    .map-controls,
+    .skip-link{display:none !important;}
+    /* El layout reserva el ancho del panel; lo ponemos a 0 para que el mapa ocupe toda la pantalla */
+    .app-shell,.map-workspace{--panel-width:0px !important;}
+    """
+
+    static func injectCSS(_ css: String) -> String {
+        let lit = (try? JSONEncoder().encode(css)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
+        return """
+        (function(){
+          function add(){
+            var s=document.createElement('style');
+            s.textContent=\(lit);
+            (document.head||document.documentElement).appendChild(s);
+          }
+          add();
+        })();
+        """
+    }
+}
+
+// MARK: - Vista del salvapantallas
+
+@objc(FlightSaverView)
+final class FlightSaverView: ScreenSaverView, WKNavigationDelegate, WKScriptMessageHandler {
+    private var webView: WKWebView?
+    private var reloadTimer: Timer?
+    private var stopObserver: NSObjectProtocol?
+    private var configController: ConfigController?
+    private let overlay = NSTextField(wrappingLabelWithString: "")
+    private var logLines: [String] = []
+
+    override init?(frame: NSRect, isPreview: Bool) {
+        super.init(frame: frame, isPreview: isPreview)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        animationTimeInterval = 60
+
+        overlay.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        overlay.textColor = NSColor.green
+        overlay.drawsBackground = true
+        overlay.backgroundColor = NSColor.black.withAlphaComponent(0.75)
+        overlay.frame = NSRect(x: 8, y: max(bounds.height - 330, 0), width: min(760, max(bounds.width - 16, 200)), height: 322)
+        overlay.autoresizingMask = [.maxXMargin, .minYMargin]
+        overlay.isHidden = !Config.debug
+        addSubview(overlay)
+        log("init ok (preview=\(isPreview), frame=\(Int(frame.width))x\(Int(frame.height)))")
+
+        // Workaround conocido: legacyScreenSaver no siempre destruye la vista
+        // al salir y se acumulan instancias. Terminamos el proceso al parar.
+        stopObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screensaver.willstop"),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            if self?.isPreview == false { NSApp.terminate(nil) }
+        }
+    }
+
+    deinit {
+        if let o = stopObserver { DistributedNotificationCenter.default().removeObserver(o) }
+    }
+
+    private func log(_ msg: String) {
+        NSLog("FlightSaver: %@", msg)
+        guard Config.debug else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.logLines.append(msg)
+            if self.logLines.count > 16 { self.logLines.removeFirst(self.logLines.count - 16) }
+            self.overlay.stringValue = self.logLines.joined(separator: "\n")
+        }
+    }
+
+    // La vista se crea también al entrar en una ventana: en macOS 26 startAnimation no siempre se llama.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { buildWebViewIfNeeded() }
+    }
+
+    override func startAnimation() {
+        super.startAnimation()
+        log("startAnimation")
+        buildWebViewIfNeeded()
+        reloadTimer?.invalidate()
+        reloadTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
+            self?.loadPage()
+        }
+    }
+
+    override func stopAnimation() {
+        super.stopAnimation()
+        log("stopAnimation")
+        reloadTimer?.invalidate()
+        reloadTimer = nil
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "fsdiag")
+        webView?.stopLoading()
+        webView?.removeFromSuperview()
+        webView = nil
+    }
+
+    private func buildWebViewIfNeeded() {
+        guard webView == nil else { return }
+
+        let cfg = WKWebViewConfiguration()
+        cfg.websiteDataStore = .nonPersistent()
+        let ucc = cfg.userContentController
+
+        if Config.pure {
+            log("MODO PURO: sin scripts ni CSS inyectados")
+        } else {
+            if Config.debug {
+                ucc.add(self, name: "fsdiag")
+                ucc.addUserScript(WKUserScript(source: Scripts.diagnostics,
+                                               injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            }
+            ucc.addUserScript(WKUserScript(source: Scripts.alwaysVisible,
+                                           injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            if Config.spoofGeo {
+                ucc.addUserScript(WKUserScript(source: Scripts.fakeGeolocation(lat: Config.lat, lon: Config.lon),
+                                               injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            }
+            ucc.addUserScript(WKUserScript(source: Scripts.injectCSS(Scripts.baseCSS + "\n" + Config.extraCSS),
+                                           injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            if Config.hideUI {
+                ucc.addUserScript(WKUserScript(source: Scripts.hideChrome,
+                                               injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            }
+        }
+
+        let wv = WKWebView(frame: bounds, configuration: cfg)
+        wv.autoresizingMask = [.width, .height]
+        wv.navigationDelegate = self
+        if #available(macOS 12.0, *) { wv.underPageBackgroundColor = .black }
+        addSubview(wv, positioned: .below, relativeTo: overlay)
+        webView = wv
+        log("webView creado (hideUI=\(Config.hideUI), geo=\(Config.spoofGeo))")
+        loadPage()
+    }
+
+    private func loadPage() {
+        let url = Config.buildURL()
+        log("cargando \(url.absoluteString)")
+        webView?.load(URLRequest(url: url))
+    }
+
+    private func retryLater() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.loadPage() }
+    }
+
+    // MARK: WKNavigationDelegate
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { log("nav: inicio") }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { log("nav: contenido recibido") }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { log("nav: terminada") }
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if let http = navigationResponse.response as? HTTPURLResponse { log("HTTP \(http.statusCode)") }
+        decisionHandler(.allow)
+    }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        log("ERROR carga: \(error.localizedDescription)"); retryLater()
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        log("ERROR nav: \(error.localizedDescription)"); retryLater()
+    }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        log("proceso web terminado, recargando"); loadPage()
+    }
+
+    // MARK: WKScriptMessageHandler
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        log("js: \(message.body)")
+    }
+
+    // MARK: Opciones
+    override var hasConfigureSheet: Bool { true }
+    override var configureSheet: NSWindow? {
+        let c = ConfigController()
+        configController = c
+        return c.window
+    }
+}
+
+// MARK: - Hoja de configuración
+
+final class ConfigController: NSObject {
+    let window: NSWindow
+    private let urlField = NSTextField()
+    private let latField = NSTextField()
+    private let lonField = NSTextField()
+    private let zoomField = NSTextField()
+    private let cssField = NSTextField()
+    private let hideBox = NSButton(checkboxWithTitle: "Ocultar más interfaz (experimental: puede ocultar los aviones)", target: nil, action: nil)
+    private let geoBox = NSButton(checkboxWithTitle: "Simular mi ubicación (lat/lon) para centrar el mapa", target: nil, action: nil)
+    private let pureBox = NSButton(checkboxWithTitle: "Modo puro: solo la web, sin inyectar nada (prueba)", target: nil, action: nil)
+    private let dbgBox = NSButton(checkboxWithTitle: "Modo diagnóstico (muestra un registro en pantalla)", target: nil, action: nil)
+
+    override init() {
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 360),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+        super.init()
+        build()
+    }
+
+    private func label(_ text: String, y: CGFloat) -> NSTextField {
+        let l = NSTextField(labelWithString: text)
+        l.frame = NSRect(x: 20, y: y, width: 110, height: 22)
+        return l
+    }
+
+    private func place(_ f: NSTextField, y: CGFloat, width: CGFloat = 380) {
+        f.frame = NSRect(x: 140, y: y, width: width, height: 22)
+        window.contentView?.addSubview(f)
+    }
+
+    private func build() {
+        window.title = "FlightSaver"
+        let content = window.contentView!
+
+        content.addSubview(label("URL base", y: 315));     place(urlField, y: 315)
+        content.addSubview(label("Latitud", y: 280));      place(latField, y: 280, width: 120)
+        content.addSubview(label("Longitud", y: 245));     place(lonField, y: 245, width: 120)
+        content.addSubview(label("Zoom (1-20)", y: 210));  place(zoomField, y: 210, width: 120)
+        content.addSubview(label("CSS extra", y: 175));    place(cssField, y: 175)
+
+        hideBox.frame = NSRect(x: 140, y: 145, width: 380, height: 22)
+        geoBox.frame = NSRect(x: 140, y: 120, width: 380, height: 22)
+        dbgBox.frame = NSRect(x: 140, y: 95, width: 380, height: 22)
+        content.addSubview(hideBox)
+        content.addSubview(geoBox)
+        content.addSubview(dbgBox)
+        pureBox.frame = NSRect(x: 140, y: 70, width: 380, height: 22)
+        content.addSubview(pureBox)
+
+        let hint = NSTextField(labelWithString:
+            "El zoom solo se aplica a webs tipo tar1090. En FlightDeck el centrado depende de la URL (/map/airport/ICAO).")
+        hint.font = .systemFont(ofSize: 10)
+        hint.textColor = .secondaryLabelColor
+        hint.frame = NSRect(x: 20, y: 48, width: 510, height: 16)
+        content.addSubview(hint)
+
+        urlField.stringValue = Config.baseURL
+        latField.stringValue = String(Config.lat)
+        lonField.stringValue = String(Config.lon)
+        zoomField.stringValue = String(Config.zoom)
+        cssField.stringValue = Config.extraCSS
+        cssField.placeholderString = "#selector{display:none !important}"
+        hideBox.state = Config.hideUI ? .on : .off
+        geoBox.state = Config.spoofGeo ? .on : .off
+        dbgBox.state = Config.debug ? .on : .off
+        pureBox.state = Config.pure ? .on : .off
+
+        let ok = NSButton(title: "Guardar", target: self, action: #selector(save))
+        ok.frame = NSRect(x: 430, y: 15, width: 90, height: 28)
+        ok.keyEquivalent = "\r"
+        let cancel = NSButton(title: "Cancelar", target: self, action: #selector(cancel))
+        cancel.frame = NSRect(x: 330, y: 15, width: 90, height: 28)
+        content.addSubview(ok)
+        content.addSubview(cancel)
+    }
+
+    @objc private func save() {
+        let s = Config.store
+        s.set(urlField.stringValue, forKey: "baseURL")
+        if let v = Double(latField.stringValue.replacingOccurrences(of: ",", with: ".")) { s.set(v, forKey: "lat") }
+        if let v = Double(lonField.stringValue.replacingOccurrences(of: ",", with: ".")) { s.set(v, forKey: "lon") }
+        if let v = Int(zoomField.stringValue) { s.set(min(max(v, 1), 20), forKey: "zoom") }
+        s.set(cssField.stringValue, forKey: "extraCSS")
+        s.set(hideBox.state == .on, forKey: "hideUIv2")
+        s.set(geoBox.state == .on, forKey: "spoofGeo")
+        s.set(dbgBox.state == .on, forKey: "debug")
+        s.set(pureBox.state == .on, forKey: "pureV1")
+        s.synchronize()
+        close()
+    }
+
+    @objc private func cancel() { close() }
+
+    private func close() {
+        if let parent = window.sheetParent { parent.endSheet(window) } else { window.close() }
+    }
+}
